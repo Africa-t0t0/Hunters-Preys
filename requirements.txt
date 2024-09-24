@@ -1,0 +1,4 @@
+pygame
+tensorflow
+stable-baselines3
+numpy
