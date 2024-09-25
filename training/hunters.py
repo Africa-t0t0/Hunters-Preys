@@ -36,7 +36,7 @@ class HunterPreyEnv(gym.Env):
         self.hunter_size = 25
 
         # Obstacles
-        self.num_obstacles = 5
+        self.num_obstacles = 2
         self.obstacle_size = 40
         self.obstacle_positions = [self._generate_obstacle_position() for _ in range(self.num_obstacles)]
 
@@ -60,10 +60,7 @@ class HunterPreyEnv(gym.Env):
         # Return the initial observation
         return self._get_observation(), {}
 
-    def step(self, action):
-        """Execute one time step within the environment."""
-
-        # Calcular nueva posición del hunter antes de moverlo
+    def _calculate_new_hunter_position(self, action: int) -> list:
         new_hunter_pos = np.copy(self.hunter_pos)
         if action == 0:  # Mover hacia arriba
             new_hunter_pos[1] += self.hunter_speed
@@ -73,16 +70,22 @@ class HunterPreyEnv(gym.Env):
             new_hunter_pos[0] -= self.hunter_speed
         elif action == 3:  # Mover hacia la derecha
             new_hunter_pos[0] += self.hunter_speed
+        return new_hunter_pos
 
-        # Verificar colisión con los obstáculos
-        if not self._check_collision(new_hunter_pos, self.obstacle_positions):
-            self.hunter_pos = new_hunter_pos  # Mover solo si no hay colisión
+    def _check_obstacle_collision(self, action: int, new_hunter_pos: list):
+        if self._check_collision(new_hunter_pos, self.obstacle_positions):
+            # Evasión controlada: ajustar la dirección ligeramente para evitar el obstáculo
+            adjustment = 0.1
 
-        # Limitar la posición del hunter dentro de los límites
-        self.hunter_pos[0] = np.clip(self.hunter_pos[0], 0, 1)
-        self.hunter_pos[1] = np.clip(self.hunter_pos[1], 0, 1)
+            if action == 0 or action == 1:  # Movimientos verticales
+                # Intentar moverse lateralmente para evitar el obstáculo
+                new_hunter_pos[0] += np.random.choice([-adjustment, adjustment])
+            else:  # Movimientos horizontales
+                # Intentar moverse verticalmente para evitar el obstáculo
+                new_hunter_pos[1] += np.random.choice([-adjustment, adjustment])
+        return new_hunter_pos
 
-        # Mover cada prey de forma independiente
+    def _move_preys(self) -> None:
         for i in range(len(self.prey_positions)):
             new_prey_pos = self.prey_positions[i] + (np.random.rand(2) - 0.5) * self.prey_speed
 
@@ -90,6 +93,28 @@ class HunterPreyEnv(gym.Env):
             if not self._check_collision(new_prey_pos, self.obstacle_positions):
                 self.prey_positions[i] = new_prey_pos  # Mover solo si no hay colisión
             self.prey_positions[i] = np.clip(self.prey_positions[i], 0, 1)
+
+    def step(self, action):
+        """Execute one time step within the environment."""
+
+        new_hunter_pos = self._calculate_new_hunter_position(action=action)
+
+        new_hunter_pos = self._check_obstacle_collision(action=action, new_hunter_pos=new_hunter_pos)
+
+        # Si todavía hay colisión, no moverse en esa dirección
+        if self._check_collision(new_hunter_pos, self.obstacle_positions):
+            return self._get_observation(), 0, False, False, {}
+
+        # Si no hay colisión, mover al hunter
+        self.hunter_pos = new_hunter_pos
+
+        # Limitar la posición del hunter dentro de los límites
+        self.hunter_pos[0] = np.clip(self.hunter_pos[0], 0, 1)
+        self.hunter_pos[1] = np.clip(self.hunter_pos[1], 0, 1)
+
+        # Move preys
+        self._move_preys()
+
         # Check if there are preys
         if not self.prey_positions:
             return self._get_observation(), 0, True, False, {}  # Si no hay preys, termina el episodio
@@ -133,10 +158,10 @@ class HunterPreyEnv(gym.Env):
         # Si hay preys, devolver la posición relativa al más cercano
         return (self.prey_positions[closest_prey_index] - self.hunter_pos).astype(np.float32)
 
-    def _check_collision(self, pos, obstacle_positions):
+    def _check_collision(self, pos, obstacle_positions, safe_distance=0.07):
         """Verifica si la posición 'pos' colisiona con alguno de los obstáculos."""
         for obstacle_pos in obstacle_positions:
-            if np.linalg.norm(pos - obstacle_pos) < 0.05:  # Ajusta el umbral según el tamaño del obstáculo
+            if np.linalg.norm(pos - obstacle_pos) < safe_distance:  # Umbral ajustado para evitar obstáculos cercanos
                 return True  # Colisión detectada
         return False
 

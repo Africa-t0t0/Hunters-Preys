@@ -35,11 +35,12 @@ print(f"Mean reward: {mean_reward} +/- {std_reward}")
 
 # Test the trained agent (optional)
 obs, info = env.reset()  # env.reset() devuelve una tupla (obs, info), pero solo necesitamos `obs`
-for _ in range(100000):
+for _ in range(10000):
+    env.render()  # Visualizar el progreso
+
     action, _states = model.predict(obs)  # Pasa solo `obs` a model.predict()
     obs, rewards, terminated, truncated, info = env.step(action)  # Paso en el entorno
-    env.render()  # Visualizar el progreso
-    clock.tick(30)
+    clock.tick(60)
     time.sleep(0.02)  # Puedes ajustar este valor para pausar más o menos tiempo
 
     if terminated or truncated:
